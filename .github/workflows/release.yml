@@ -1,0 +1,74 @@
+name: Release
+
+# Publishes one package to npm when a `<package>-v<version>` tag is pushed,
+# for example `linear-v0.1.0` for `packages/linear`. Tags only: this never
+# runs on pull requests or on pushes to branches.
+#
+# Authentication is npm trusted publishing (OIDC). There is no npm token: the
+# package on npmjs.com must list this repository and this workflow file
+# (`release.yml`) as its trusted publisher.
+on:
+  push:
+    tags:
+      - 'linear-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # Trusted publishing needs a GitHub-hosted runner.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the tag against the package
+        id: package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: ./scripts/check-release-tag.sh "$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Check the tagged commit is on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Check the npm version supports trusted publishing
+        run: |
+          required=11.5.1
+          actual="$(npm --version)"
+          if [ "$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n 1)" != "$required" ]; then
+            echo "npm $actual is older than $required, which trusted publishing needs" >&2
+            exit 1
+          fi
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run the checks
+        env:
+          PACKAGE_DIR: ${{ steps.package.outputs.dir }}
+        run: |
+          pnpm --filter "./$PACKAGE_DIR" run test
+          pnpm --filter "./$PACKAGE_DIR" run typecheck
+          pnpm --filter "./$PACKAGE_DIR" run build
+          pnpm --filter "./$PACKAGE_DIR" run lint
+
+      - name: Publish
+        working-directory: ${{ steps.package.outputs.dir }}
+        run: npm publish --access public
