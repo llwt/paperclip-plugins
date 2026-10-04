@@ -1,10 +1,11 @@
 # Linear
 
 Paperclip plugin that renders Linear issue links on Paperclip issues with live
-status instead of plain links.
+status instead of plain links, and adds a manual control to change the state
+of a linked Linear issue.
 
-There is no plugin UI: inline status chips are rendered by the host from the
-metadata this plugin returns.
+Inline status chips are rendered by the host from the metadata this plugin
+returns. The manual control is the plugin's only UI.
 
 ## What it does
 
@@ -41,23 +42,51 @@ The status icon is picked from the host's fixed icon set by state type:
 - A response that does not match the expected shape is a failure, never a
   status.
 
-## Read-only
+## Manual status control
 
-The plugin never writes to Linear, even when the bound key has Read and Write
-scope:
+On a task that links Linear issues, a "Linear" card on the task page lists
+each linked issue with a picker of its team's workflow states. Picking another
+state sends that one change to Linear. Archived and missing issues are listed
+without a picker.
 
-- It declares `external.objects.detect` and `external.objects.read` only, not
-  `external.objects.write`.
-- Linear receives one fixed GraphQL `query` document
-  (`LINEAR_ISSUE_QUERY` in `src/providers/linear.ts`) and nothing else. A test
-  asserts that it is the only document sent.
+- The control lists links found in the task's description and comments. A
+  link that sits only in a task document still gets a chip but is not listed.
+- At most 25 linked issues are listed per task.
+- Only a board user can change a state. Agents and system callers are refused.
+- The worker reads the task again on every change and refuses a Linear issue
+  that is not linked on it, and a state that is not in that issue's team
+  workflow.
+- A failed change is shown with fixed text and is never retried.
+- After a change the control asks the host to re-read the task's chips. The
+  host does not re-read a chip it read within the last 5 minutes, so the chip
+  can lag behind the control by up to that long. The control itself always
+  shows the state Linear returned.
+
+## What is written
+
+Nothing is ever written to Linear automatically. Task status changes, link
+detection, status reads and agents never cause a write:
+
+- The status chips send one fixed GraphQL `query` document
+  (`LINEAR_ISSUE_QUERY` in `src/providers/linear.ts`) and nothing else.
+- The manual control sends one fixed read `query` (`LINEAR_WORKFLOW_QUERY`)
+  and one fixed `mutation` (`LINEAR_SET_STATE_MUTATION`, an `issueUpdate` whose
+  only input is a state id), both in `src/control.ts`. The mutation is sent
+  only when a board user picks a state.
+- Tests assert that these are the only documents sent.
+
+Nothing is written to Paperclip either: the plugin declares
+`external.objects.detect`, `external.objects.read`, `issues.read`,
+`issue.comments.read` and `ui.detailTab.register`, and no write capability.
 
 ## Credentials
 
 The credential is a company secret bound in the plugin settings, never a file
 on disk:
 
-- `linearApiKey`: a Linear API key (read scope is enough).
+- `linearApiKey`: a Linear API key. Read scope is enough for the status chips.
+  Changing a state with the manual control needs write scope, and the change
+  shows in Linear as made by the key's owner.
 
 With no secret bound, links are still detected and show as needing
 authentication.

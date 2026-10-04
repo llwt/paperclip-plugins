@@ -9,10 +9,11 @@ import {
   type Provider
 } from "./types.js";
 
-const LINEAR_API_URL = "https://api.linear.app/graphql";
+export const LINEAR_API_URL = "https://api.linear.app/graphql";
 
-// The only GraphQL document this plugin ever sends. It is a query, never a
-// mutation: the plugin must not write to Linear.
+// The only GraphQL document the status chips ever send. It is a query, never a
+// mutation: reading a status must not write to Linear. The manual control in
+// `../control.ts` has its own two documents.
 export const LINEAR_ISSUE_QUERY = `query ExternalStatusIssue($id: String!) {
   issue(id: $id) {
     identifier
@@ -24,7 +25,7 @@ export const LINEAR_ISSUE_QUERY = `query ExternalStatusIssue($id: String!) {
 
 // https://linear.app/<workspace>/issue/<TEAM-123>[/<slug>]
 const ISSUE_PATH = /^\/[^/]+\/issue\/([A-Za-z][A-Za-z0-9]*-\d+)(?:\/|$)/;
-const ISSUE_IDENTIFIER = /^[A-Z][A-Z0-9]*-\d+$/;
+export const ISSUE_IDENTIFIER = /^[A-Z][A-Z0-9]*-\d+$/;
 
 interface LinearIssue {
   identifier: string;
@@ -48,7 +49,7 @@ type GraphQLErrorKind = "auth" | "not_found" | "rate_limited" | "other";
 // Classified from the machine-readable `extensions` and `path` only. `message`
 // is used solely to recognise Linear's fixed "Entity not found: Issue" text and
 // is never returned or logged.
-function classifyError(error: unknown): GraphQLErrorKind {
+export function classifyError(error: unknown): GraphQLErrorKind {
   if (!isRecord(error)) return "other";
   const extensions = isRecord(error.extensions) ? error.extensions : {};
   const code = `${String(extensions.code ?? "")} ${String(extensions.type ?? "")}`;
@@ -72,7 +73,7 @@ function classifyError(error: unknown): GraphQLErrorKind {
 
 // True when the response carries no issue at all. A partially returned issue
 // contradicts absence.
-function hasNoIssueData(data: unknown): boolean {
+export function hasNoIssueData(data: unknown): boolean {
   if (data === undefined || data === null) return true;
   return isRecord(data) && (data.issue === undefined || data.issue === null);
 }

@@ -5,18 +5,34 @@ const manifest: PaperclipPluginManifestV1 = {
   apiVersion: 1,
   version: "0.1.0",
   displayName: "Linear",
-  description: "Read-only live status for Linear issue links on Paperclip issues",
+  description: "Live status for Linear issue links on Paperclip issues, with a manual control to change a linked issue's state",
   author: "llwt",
   categories: ["connector"],
-  // Read-only by design: `external.objects.write` is deliberately not declared.
+  // Nothing is written to Paperclip: no write, create or update capability is
+  // declared. The only write to Linear is the manual status control.
   capabilities: [
     "external.objects.detect",
     "external.objects.read",
     "http.outbound",
-    "secrets.read-ref"
+    "secrets.read-ref",
+    "issues.read",
+    "issue.comments.read",
+    "ui.detailTab.register"
   ],
   entrypoints: {
-    worker: "./dist/worker.js"
+    worker: "./dist/worker.js",
+    ui: "./dist/ui"
+  },
+  ui: {
+    slots: [
+      {
+        type: "taskDetailView",
+        id: "linear-status-control",
+        displayName: "Linear",
+        exportName: "LinearStatusControl",
+        entityTypes: ["issue"]
+      }
+    ]
   },
   instanceConfigSchema: {
     type: "object",
@@ -27,7 +43,7 @@ const manifest: PaperclipPluginManifestV1 = {
         type: "object",
         format: "secret-ref",
         title: "Linear API key",
-        description: "Company secret holding a Linear API key. Read scope is enough."
+        description: "Company secret holding a Linear API key. Read scope shows status; changing a state by hand needs write scope."
       }
     }
   },
