@@ -6,7 +6,7 @@ import {
   LINEAR_SET_STATE_MUTATION,
   LINEAR_WORKFLOW_QUERY,
   LINKED_ISSUES_DATA_KEY,
-  MAX_LINKED_ISSUES,
+  LINKED_ISSUES_PAGE_SIZE,
   SET_STATE_ACTION_KEY,
   linearIdentifiersIn,
   type LinkedIssuesResult,
@@ -87,8 +87,12 @@ describe("manual status control", () => {
     });
   }
 
-  function list(issueId = ISSUE_ID) {
-    return harness.getData<LinkedIssuesResult>(LINKED_ISSUES_DATA_KEY, { issueId, companyId: COMPANY_ID });
+  function list(issueId = ISSUE_ID, offset?: number) {
+    return harness.getData<LinkedIssuesResult>(LINKED_ISSUES_DATA_KEY, {
+      issueId,
+      companyId: COMPANY_ID,
+      ...(offset === undefined ? {} : { offset })
+    });
   }
 
   function setState(identifier: string, stateId: string, options: Parameters<typeof harness.performAction>[2] = USER) {
@@ -128,7 +132,8 @@ describe("manual status control", () => {
 
       const result = await list();
 
-      expect(result.truncated).toBe(false);
+      expect(result.total).toBe(3);
+      expect(result.nextOffset).toBeNull();
       expect(result.issues).toEqual([
         { identifier: "ENG-1", status: "ok", state: TODO, states: [TODO, IN_PROGRESS, DONE] },
         { identifier: "ENG-2", status: "ok", state: IN_PROGRESS, states: [TODO, IN_PROGRESS, DONE] },
@@ -158,8 +163,8 @@ describe("manual status control", () => {
 
     it("makes no Linear call for a task without Linear links, an unknown task or an unbound secret", async () => {
       seedTask("no links here, only https://github.com/acme/widgets/pull/1");
-      expect(await list()).toEqual({ issues: [], truncated: false });
-      expect(await list("missing-issue")).toEqual({ issues: [], truncated: false });
+      expect(await list()).toEqual({ issues: [], total: 0, nextOffset: null });
+      expect(await list("missing-issue")).toEqual({ issues: [], total: 0, nextOffset: null });
 
       seedTask("https://linear.app/acme/issue/ENG-1");
       harness.setConfig({});
@@ -175,16 +180,49 @@ describe("manual status control", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("bounds how many linked issues one task can make it read", async () => {
-      const links = Array.from({ length: MAX_LINKED_ISSUES + 3 }, (_, index) => `https://linear.app/acme/issue/ENG-${index + 1}`);
-      seedTask(links.join("\n"));
+    it("reads a page at a time and makes every linked issue reachable", async () => {
+      const count = LINKED_ISSUES_PAGE_SIZE * 2 + 3;
+      const links = Array.from({ length: count }, (_, index) => `https://linear.app/acme/issue/ENG-${index + 1}`);
+      seedTask(links.slice(0, 30).join("\n"), [links.slice(30).join("\n")]);
       fetchMock.mockImplementation(async (_url, init) => workflowResponse(JSON.parse(init?.body as string).variables.id));
 
-      const result = await list();
+      const listed: string[] = [];
+      let offset: number | null = 0;
+      let pages = 0;
+      while (offset !== null) {
+        fetchMock.mockClear();
+        const page: LinkedIssuesResult = await list(ISSUE_ID, offset);
+        // One request never reads more than a page from Linear.
+        expect(fetchMock.mock.calls.length).toBe(page.issues.length);
+        expect(page.issues.length).toBeLessThanOrEqual(LINKED_ISSUES_PAGE_SIZE);
+        expect(page.total).toBe(count);
+        listed.push(...page.issues.map((issue) => issue.identifier));
+        offset = page.nextOffset;
+        pages += 1;
+      }
 
-      expect(result.truncated).toBe(true);
-      expect(result.issues).toHaveLength(MAX_LINKED_ISSUES);
-      expect(fetchMock).toHaveBeenCalledTimes(MAX_LINKED_ISSUES);
+      expect(pages).toBe(3);
+      expect(listed).toEqual(Array.from({ length: count }, (_, index) => `ENG-${index + 1}`));
+    });
+
+    it("treats an offset past the end, or a malformed one, as nothing more to read", async () => {
+      seedTask("https://linear.app/acme/issue/ENG-1");
+      fetchMock.mockImplementation(async () => workflowResponse("ENG-1"));
+
+      expect(await list(ISSUE_ID, 25)).toEqual({ issues: [], total: 1, nextOffset: null });
+      expect(fetchMock).not.toHaveBeenCalled();
+      for (const offset of [-5, 1.5, "25" as unknown as number]) {
+        expect((await list(ISSUE_ID, offset)).issues.map((issue) => issue.identifier)).toEqual(["ENG-1"]);
+      }
+    });
+
+    it("can change an issue that is linked beyond the first page", async () => {
+      const links = Array.from({ length: LINKED_ISSUES_PAGE_SIZE + 5 }, (_, index) => `https://linear.app/acme/issue/ENG-${index + 1}`);
+      seedTask(links.join("\n"));
+      const last = `ENG-${LINKED_ISSUES_PAGE_SIZE + 5}`;
+      fetchMock.mockResolvedValueOnce(workflowResponse(last, TODO)).mockResolvedValueOnce(updateResponse(last, DONE));
+
+      expect(await setState(last, DONE.id)).toMatchObject({ ok: true, identifier: last, changed: true });
     });
 
     it("reports a failed read with fixed text and no retry", async () => {

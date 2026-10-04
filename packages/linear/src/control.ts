@@ -33,8 +33,9 @@ export const LINEAR_SET_STATE_MUTATION = `mutation ManualStatusUpdate($id: Strin
   }
 }`;
 
-// Bounds the Linear calls one page view can cause.
-export const MAX_LINKED_ISSUES = 25;
+// Linked issues are read a page at a time, which bounds the Linear calls one
+// request can cause. Every linked issue is reachable through a later page.
+export const LINKED_ISSUES_PAGE_SIZE = 25;
 
 const LINEAR_LINK = /https:\/\/linear\.app\/[^\s<>()[\]"'`]+/g;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -68,9 +69,12 @@ export type LinkedIssue =
   | { identifier: string; status: "unavailable"; code: FailureCode; message: string };
 
 export interface LinkedIssuesResult {
+  /** One page of the task's linked issues, in order of first appearance. */
   issues: LinkedIssue[];
-  /** True when the task links more Linear issues than the control lists. */
-  truncated: boolean;
+  /** How many Linear issues the task links in total. */
+  total: number;
+  /** Offset of the next page, or null when this is the last one. */
+  nextOffset: number | null;
 }
 
 export type SetStateResult =
@@ -201,12 +205,17 @@ async function resolveToken(host: PluginContext, companyId: string): Promise<str
 
 async function listLinkedIssues(host: PluginContext, params: Record<string, unknown>): Promise<LinkedIssuesResult> {
   const { issueId, companyId } = params;
-  if (typeof issueId !== "string" || typeof companyId !== "string") return { issues: [], truncated: false };
+  const empty: LinkedIssuesResult = { issues: [], total: 0, nextOffset: null };
+  if (typeof issueId !== "string" || typeof companyId !== "string") return empty;
+  const offset = typeof params.offset === "number" && Number.isInteger(params.offset) && params.offset > 0 ? params.offset : 0;
 
   const linked = await linkedIdentifiers(host, issueId, companyId);
-  if (!linked || linked.length === 0) return { issues: [], truncated: false };
-  const identifiers = linked.slice(0, MAX_LINKED_ISSUES);
-  const truncated = linked.length > identifiers.length;
+  if (!linked) return empty;
+  const identifiers = linked.slice(offset, offset + LINKED_ISSUES_PAGE_SIZE);
+  const total = linked.length;
+  const nextOffset = offset + identifiers.length < total ? offset + identifiers.length : null;
+  if (identifiers.length === 0) return { issues: [], total, nextOffset: null };
+  const page = (issues: LinkedIssue[]): LinkedIssuesResult => ({ issues, total, nextOffset });
   const unavailable = (identifier: string, code: FailureCode): LinkedIssue => ({
     identifier,
     status: "unavailable",
@@ -219,10 +228,10 @@ async function listLinkedIssues(host: PluginContext, params: Record<string, unkn
     token = await resolveToken(host, companyId);
   } catch {
     host.logger.warn("Linear status control read failed");
-    return { issues: identifiers.map((identifier) => unavailable(identifier, "error")), truncated };
+    return page(identifiers.map((identifier) => unavailable(identifier, "error")));
   }
   if (token === null) {
-    return { issues: identifiers.map((identifier) => unavailable(identifier, "auth_required")), truncated };
+    return page(identifiers.map((identifier) => unavailable(identifier, "auth_required")));
   }
 
   const secret = token;
@@ -240,7 +249,7 @@ async function listLinkedIssues(host: PluginContext, params: Record<string, unkn
       }
     })
   );
-  return { issues, truncated };
+  return page(issues);
 }
 
 async function setIssueState(

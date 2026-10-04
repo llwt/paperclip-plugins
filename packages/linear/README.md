@@ -51,16 +51,30 @@ without a picker.
 
 - The control lists links found in the task's description and comments. A
   link that sits only in a task document still gets a chip but is not listed.
-- At most 25 linked issues are listed per task.
+- Linked issues are listed 25 at a time. "Show more" loads the next 25, so
+  every linked issue is reachable.
 - Only a board user can change a state. Agents and system callers are refused.
 - The worker reads the task again on every change and refuses a Linear issue
   that is not linked on it, and a state that is not in that issue's team
   workflow.
 - A failed change is shown with fixed text and is never retried.
-- After a change the control asks the host to re-read the task's chips. The
-  host does not re-read a chip it read within the last 5 minutes, so the chip
-  can lag behind the control by up to that long. The control itself always
-  shows the state Linear returned.
+
+### Link chips after a change
+
+The control shows the state Linear returned straight away. The link chips are
+drawn by the host, and a plugin can only ask the host to read them again:
+
+- Whenever the control loads (opening the task, coming back to it, or after a
+  change) it compares each chip with what it read from Linear and asks the
+  host to re-read the ones that differ.
+- The host declines to re-read a chip it read within the last 5 minutes. The
+  control then says the chips are behind and asks again when that time has
+  passed, as long as the task page is open. Leaving the page does not lose
+  the refresh: the comparison runs again the next time the task is opened.
+- If the host cannot be asked, the control says so and offers "Refresh
+  chips". That only asks the host again. It never repeats the change.
+- The host does not redraw a chip that is already on screen when its data
+  changes. Reload the page to see the new chip.
 
 ## What is written
 
