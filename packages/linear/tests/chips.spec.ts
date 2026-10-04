@@ -51,11 +51,14 @@ describe("syncChips", () => {
   }
 
   it("asks for nothing when there is nothing to compare or the chips already match", async () => {
-    expect(await syncChips(ISSUE_ID, [], NOW)).toEqual({ status: "synced" });
+    expect(await syncChips(ISSUE_ID, [], NOW)).toEqual({ status: "synced", updated: false });
     expect(fetchMock).not.toHaveBeenCalled();
 
     fetchMock.mockResolvedValueOnce(json([{ object: chip("ENG-1", "Todo") }, { object: null }]));
-    expect(await syncChips(ISSUE_ID, [{ identifier: "ENG-1", label: "Todo" }], NOW)).toEqual({ status: "synced" });
+    expect(await syncChips(ISSUE_ID, [{ identifier: "ENG-1", label: "Todo" }], NOW)).toEqual({
+      status: "synced",
+      updated: false
+    });
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([LIST_URL]);
   });
 
@@ -81,7 +84,7 @@ describe("syncChips", () => {
       NOW
     );
 
-    expect(result).toEqual({ status: "synced" });
+    expect(result).toEqual({ status: "synced", updated: true });
     expect(refreshBody()).toEqual({ objectIds: ["object-ENG-1"] });
     expect(fetchMock.mock.calls[1][1]?.method).toBe("POST");
   });

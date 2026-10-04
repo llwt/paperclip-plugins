@@ -60,7 +60,7 @@ function IssueRow({
   );
 }
 
-function ChipStatus({ chips, changed, onRetry }: { chips: ChipSync | null; changed: boolean; onRetry: () => void }) {
+function ChipStatus({ chips, onRetry }: { chips: ChipSync | null; onRetry: () => void }) {
   if (!chips) return null;
   if (chips.status === "failed") {
     return (
@@ -79,9 +79,9 @@ function ChipStatus({ chips, changed, onRetry }: { chips: ChipSync | null; chang
       </div>
     );
   }
-  return changed ? (
+  return chips.updated ? (
     <div role="status" style={muted}>
-      Reload the page if a link chip still shows the old state.
+      A link chip has a new state. Reload the page to see it.
     </div>
   ) : null;
 }
@@ -102,7 +102,6 @@ function IssuePage({
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [chips, setChips] = useState<ChipSync | null>(null);
-  const [changed, setChanged] = useState(false);
   const mounted = useRef(true);
   const retries = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -148,7 +147,6 @@ function IssuePage({
     try {
       const result = (await setState({ issueId, identifier, stateId })) as SetStateResult;
       if (result.ok) {
-        setChanged(true);
         setNotice(`${identifier} is now ${result.state.name} in Linear.`);
       } else {
         setNotice(`${identifier}: ${result.message}`);
@@ -179,7 +177,6 @@ function IssuePage({
       ) : null}
       <ChipStatus
         chips={chips}
-        changed={changed}
         onRetry={() => {
           retries.current = 0;
           void sync(data.issues);

@@ -136,6 +136,7 @@ describe("LinearStatusControl", () => {
     expect((screen.getByLabelText("State of ENG-1 in Linear") as HTMLSelectElement).value).toBe(DONE.id);
     expect((screen.getByLabelText("State of ENG-2 in Linear") as HTMLSelectElement).value).toBe(TODO.id);
     expect(refreshPosts()).toHaveLength(0);
+    expect(screen.queryByText(/Reload the page/)).toBeNull();
     expect(sdk.action).not.toHaveBeenCalled();
   });
 
@@ -153,6 +154,8 @@ describe("LinearStatusControl", () => {
     expect(refreshPosts().map(([, init]) => JSON.parse(init?.body as string))).toEqual([{ objectIds: ["object-ENG-1"] }]);
     expect(chips.get("ENG-1")).toBe("In Progress");
     expect(chips.get("ENG-2")).toBe("Todo");
+    // The host does not redraw a chip already on screen, so the control says so.
+    expect(screen.getByText("A link chip has a new state. Reload the page to see it.")).toBeTruthy();
   });
 
   it("does not lose the chip refresh when the page is left while the host still declines it", async () => {
@@ -182,6 +185,7 @@ describe("LinearStatusControl", () => {
     expect(refreshPosts()).toHaveLength(2);
     expect(chips.get("ENG-1")).toBe("In Progress");
     expect(screen.queryByText(/The link chips are behind Linear/)).toBeNull();
+    expect(screen.getByText("A link chip has a new state. Reload the page to see it.")).toBeTruthy();
     expect(sdk.action).toHaveBeenCalledTimes(1);
   });
 

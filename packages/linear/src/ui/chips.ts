@@ -8,8 +8,11 @@ import { isRecord, TTL_SECONDS } from "../providers/types.js";
 // three ways, and a declined or failed one is reported instead of assumed.
 
 export type ChipSync =
-  /** Every chip already shows what Linear returned. */
-  | { status: "synced" }
+  /**
+   * Every chip holds what Linear returned. `updated` is true when the host
+   * re-read one just now: the host does not redraw a chip already on screen.
+   */
+  | { status: "synced"; updated: boolean }
   /** The host declined to re-read at least one chip yet. Ask again at `retryAt`. */
   | { status: "pending"; retryAt: number }
   /** The host could not be asked, or answered with something unexpected. */
@@ -63,7 +66,7 @@ async function hostJson(path: string, init?: RequestInit): Promise<unknown> {
  * already match.
  */
 export async function syncChips(issueId: string, expected: ExpectedChip[], now = Date.now()): Promise<ChipSync> {
-  if (expected.length === 0) return { status: "synced" };
+  if (expected.length === 0) return { status: "synced", updated: false };
   const labels = new Map(expected.map((chip) => [chip.identifier, chip.label]));
   const isStale = (chip: HostChip) => labels.has(chip.identifier) && labels.get(chip.identifier) !== chip.label;
   const base = `/api/issues/${encodeURIComponent(issueId)}/external-objects`;
@@ -74,7 +77,7 @@ export async function syncChips(issueId: string, expected: ExpectedChip[], now =
     const stale = listed
       .map((group) => (isRecord(group) ? parseChip(group.object) : null))
       .filter((chip): chip is HostChip => chip !== null && isStale(chip));
-    if (stale.length === 0) return { status: "synced" };
+    if (stale.length === 0) return { status: "synced", updated: false };
 
     const answer = await hostJson(`${base}/refresh`, {
       method: "POST",
@@ -90,7 +93,7 @@ export async function syncChips(issueId: string, expected: ExpectedChip[], now =
 
     // A chip the host did not answer for counts as still stale.
     const remaining = stale.map((chip) => after.get(chip.id) ?? chip).filter(isStale);
-    if (remaining.length === 0) return { status: "synced" };
+    if (remaining.length === 0) return { status: "synced", updated: true };
     const retryAt = Math.max(...remaining.map((chip) => chip.nextRefreshAt ?? now + TTL_SECONDS * 1000));
     return { status: "pending", retryAt: Math.max(retryAt, now) + 2000 };
   } catch {
