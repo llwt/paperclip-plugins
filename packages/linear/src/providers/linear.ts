@@ -83,15 +83,18 @@ type StatusFields = Pick<
 >;
 
 // Linear workflow state types: triage, backlog, unstarted, started, completed, canceled.
+// Icon keys come from the host's fixed set and follow the native issue glyphs
+// as closely as that set allows.
 function statusForStateType(type: string): StatusFields {
   switch (type) {
     case "started":
-      return { statusCategory: "running", statusTone: "info", statusIconKey: "circle-dot", isTerminal: false };
+      return { statusCategory: "running", statusTone: "info", statusIconKey: "loader", isTerminal: false };
     case "completed":
       return { statusCategory: "succeeded", statusTone: "success", statusIconKey: "check-circle", isTerminal: true };
     case "canceled":
-      return { statusCategory: "closed", statusTone: "muted", statusIconKey: "circle", isTerminal: true };
+      return { statusCategory: "closed", statusTone: "muted", statusIconKey: "x-circle", isTerminal: true };
     case "triage":
+      return { statusCategory: "open", statusTone: "neutral", statusIconKey: "clock", isTerminal: false };
     case "backlog":
     case "unstarted":
       return { statusCategory: "open", statusTone: "neutral", statusIconKey: "circle", isTerminal: false };
@@ -111,7 +114,7 @@ export const linearProvider: Provider = {
     const match = ISSUE_PATH.exec(url.pathname);
     if (!match) return null;
     const identifier = match[1].toUpperCase();
-    return { objectType: "issue", externalId: identifier, displayKey: identifier };
+    return { objectType: "issue", externalId: identifier, displayKey: identifier, displayTitle: identifier };
   },
 
   isValidExternalId(externalId) {
@@ -151,6 +154,7 @@ export const linearProvider: Provider = {
           snapshot: {
             displayKey: externalId,
             iconKey: "linear",
+            displayTitle: externalId,
             statusKey: "not_found",
             statusLabel: "Not found",
             statusIconKey: "archive",
@@ -172,10 +176,13 @@ export const linearProvider: Provider = {
     const issue = isRecord(body.data) ? parseIssue(body.data.issue) : null;
     if (!issue) return malformedResponse("linear");
 
+    // The host shows `displayTitle` as the chip text and falls back to the link
+    // URL or the last stored title when it is missing, so the identifier is
+    // always sent explicitly. The issue title is deliberately left out.
     const base = {
       displayKey: issue.identifier,
       iconKey: "linear",
-      displayTitle: issue.title ? `${issue.identifier}: ${issue.title}` : issue.identifier,
+      displayTitle: issue.identifier,
       ttlSeconds: TTL_SECONDS
     };
     // An archived issue keeps its last workflow state, which would otherwise

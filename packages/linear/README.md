@@ -14,6 +14,23 @@ metadata this plugin returns.
 
 Only `https` links are detected.
 
+### Chip display
+
+The chip reads the Linear identifier and the workflow state name, for example
+`ENG-123 - Todo`. The issue title is not shown, on the chip or on hover.
+
+The status icon is picked from the host's fixed icon set by state type:
+
+| Linear state type | Icon key |
+| --- | --- |
+| `triage` | `clock` |
+| `backlog` | `circle` |
+| `unstarted` | `circle` |
+| `started` | `loader` |
+| `completed` | `check-circle` |
+| `canceled` | `x-circle` |
+| Archived, Not found | `archive` |
+
 ### Status rules
 
 - An archived Linear issue shows as `Archived`, not its last workflow state.
