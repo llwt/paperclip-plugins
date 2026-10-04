@@ -4,6 +4,7 @@ export interface ProviderDetection {
   objectType: string;
   externalId: string;
   displayKey: string;
+  displayTitle: string;
 }
 
 export type ProviderFetch = (url: string, init?: RequestInit) => Promise<Response>;

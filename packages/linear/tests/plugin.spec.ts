@@ -103,7 +103,8 @@ describe("onDetectExternalObjects", () => {
         confidence: "exact",
         objectType: "issue",
         externalId: "ENG-123",
-        displayKey: "ENG-123"
+        displayKey: "ENG-123",
+        displayTitle: "ENG-123"
       }
     ]);
   });
@@ -170,7 +171,7 @@ describe("onResolveExternalObject", () => {
       ok: true,
       snapshot: {
         displayKey: "ENG-123",
-        displayTitle: "ENG-123: Example issue",
+        displayTitle: "ENG-123",
         statusKey: "started",
         statusLabel: "In Progress",
         statusCategory: "running",
@@ -189,19 +190,35 @@ describe("onResolveExternalObject", () => {
   });
 
   it.each([
-    ["triage", "open", false],
-    ["backlog", "open", false],
-    ["unstarted", "open", false],
-    ["started", "running", false],
-    ["completed", "succeeded", true],
-    ["canceled", "closed", true],
-    ["something-new", "unknown", false]
-  ])("maps Linear state type %s to %s", async (type, statusCategory, isTerminal) => {
+    ["triage", "open", "neutral", "clock", false],
+    ["backlog", "open", "neutral", "circle", false],
+    ["unstarted", "open", "neutral", "circle", false],
+    ["started", "running", "info", "loader", false],
+    ["completed", "succeeded", "success", "check-circle", true],
+    ["canceled", "closed", "muted", "x-circle", true],
+    ["something-new", "unknown", "neutral", "circle", false]
+  ])("maps Linear state type %s to %s", async (type, statusCategory, statusTone, statusIconKey, isTerminal) => {
     fetchMock.mockResolvedValue(linearIssue({ name: "State", type }));
     expect(await resolve("linear", "issue", "ENG-123")).toMatchObject({
       ok: true,
-      snapshot: { statusCategory, isTerminal }
+      snapshot: {
+        displayKey: "ENG-123",
+        displayTitle: "ENG-123",
+        statusKey: type,
+        statusLabel: "State",
+        statusCategory,
+        statusTone,
+        statusIconKey,
+        isTerminal
+      }
     });
+  });
+
+  // The host builds the chip text from `displayTitle` and the status label.
+  it("never puts the issue title in a display field", async () => {
+    fetchMock.mockResolvedValue(linearIssue({ name: "Todo", type: "unstarted" }));
+    const result = await resolve("linear", "issue", "ENG-123");
+    expect(JSON.stringify(result)).not.toContain("Example issue");
   });
 
   it("renders an archived Linear issue as terminal Archived, not its workflow state", async () => {
@@ -209,8 +226,11 @@ describe("onResolveExternalObject", () => {
     expect(await resolve("linear", "issue", "ENG-123")).toMatchObject({
       ok: true,
       snapshot: {
+        displayKey: "ENG-123",
+        displayTitle: "ENG-123",
         statusKey: "archived",
         statusLabel: "Archived",
+        statusIconKey: "archive",
         statusCategory: "archived",
         statusTone: "muted",
         isTerminal: true,
@@ -234,7 +254,16 @@ describe("onResolveExternalObject", () => {
     );
     expect(await resolve("linear", "issue", "ENG-999")).toMatchObject({
       ok: true,
-      snapshot: { statusKey: "not_found", statusCategory: "archived", isTerminal: true }
+      snapshot: {
+        displayKey: "ENG-999",
+        displayTitle: "ENG-999",
+        statusKey: "not_found",
+        statusLabel: "Not found",
+        statusIconKey: "archive",
+        statusCategory: "archived",
+        statusTone: "muted",
+        isTerminal: true
+      }
     });
   });
 
