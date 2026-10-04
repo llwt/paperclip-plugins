@@ -1,0 +1,47 @@
+{
+  "name": "@llwt/paperclip-plugin-linear",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Read-only live status for Linear issue links on Paperclip issues",
+  "scripts": {
+    "build": "node ./esbuild.config.mjs",
+    "dev": "node ./esbuild.config.mjs --watch",
+    "test": "vitest run --config ./vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js"
+  },
+  "keywords": [
+    "paperclip",
+    "plugin",
+    "connector"
+  ],
+  "author": "llwt",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/llwt/paperclip-plugins.git",
+    "directory": "packages/linear"
+  },
+  "homepage": "https://github.com/llwt/paperclip-plugins/tree/main/packages/linear#readme",
+  "bugs": {
+    "url": "https://github.com/llwt/paperclip-plugins/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@paperclipai/plugin-sdk": "2026.916.1",
+    "ajv": "^8.17.1",
+    "esbuild": "^0.25.8",
+    "typescript": "5.9.3",
+    "vitest": "4.1.9"
+  }
+}
