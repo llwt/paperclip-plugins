@@ -156,9 +156,13 @@ describe("onResolveExternalObject", () => {
     vi.unstubAllGlobals();
   });
 
-  function linearIssue(state: { name: string; type: string }, archivedAt: string | null = null) {
+  function linearIssue(
+    state: { name: string; type: string },
+    archivedAt: string | null = null,
+    title: string | null = "Example issue"
+  ) {
     return jsonResponse({
-      data: { issue: { identifier: "ENG-123", title: "Example issue", archivedAt, state } }
+      data: { issue: { identifier: "ENG-123", title, archivedAt, state } }
     });
   }
 
@@ -171,7 +175,7 @@ describe("onResolveExternalObject", () => {
       ok: true,
       snapshot: {
         displayKey: "ENG-123",
-        displayTitle: "ENG-123",
+        displayTitle: "Example issue",
         statusKey: "started",
         statusLabel: "In Progress",
         statusCategory: "running",
@@ -203,7 +207,7 @@ describe("onResolveExternalObject", () => {
       ok: true,
       snapshot: {
         displayKey: "ENG-123",
-        displayTitle: "ENG-123",
+        displayTitle: "Example issue",
         statusKey: type,
         statusLabel: "State",
         statusCategory,
@@ -214,11 +218,30 @@ describe("onResolveExternalObject", () => {
     });
   });
 
-  // The host builds the chip text from `displayTitle` and the status label.
-  it("never puts the issue title in a display field", async () => {
+  // The host shows `displayKey` in the first column and builds the second from
+  // `displayTitle` and the status label, so the identifier must not repeat.
+  it("sends the identifier as the key and the issue title alone as the title", async () => {
     fetchMock.mockResolvedValue(linearIssue({ name: "Todo", type: "unstarted" }));
     const result = await resolve("linear", "issue", "ENG-123");
-    expect(JSON.stringify(result)).not.toContain("Example issue");
+    expect(result).toMatchObject({
+      ok: true,
+      snapshot: { displayKey: "ENG-123", displayTitle: "Example issue", statusLabel: "Todo" }
+    });
+    expect(result.ok && result.snapshot.displayTitle).not.toContain("ENG-123");
+  });
+
+  // The host renders an empty `displayTitle` as is and falls back to the link
+  // URL when it is missing, so the identifier stands in for an absent title.
+  it.each([
+    ["null", null],
+    ["empty", ""],
+    ["blank", "   "]
+  ])("falls back to the identifier when the issue title is %s", async (_label, title) => {
+    fetchMock.mockResolvedValue(linearIssue({ name: "Todo", type: "unstarted" }, null, title));
+    expect(await resolve("linear", "issue", "ENG-123")).toMatchObject({
+      ok: true,
+      snapshot: { displayKey: "ENG-123", displayTitle: "ENG-123" }
+    });
   });
 
   it("renders an archived Linear issue as terminal Archived, not its workflow state", async () => {
@@ -227,7 +250,7 @@ describe("onResolveExternalObject", () => {
       ok: true,
       snapshot: {
         displayKey: "ENG-123",
-        displayTitle: "ENG-123",
+        displayTitle: "Example issue",
         statusKey: "archived",
         statusLabel: "Archived",
         statusIconKey: "archive",
