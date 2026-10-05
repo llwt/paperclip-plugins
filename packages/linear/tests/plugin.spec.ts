@@ -63,7 +63,10 @@ describe("manifest", () => {
       "external.objects.detect",
       "external.objects.read",
       "http.outbound",
-      "secrets.read-ref"
+      "secrets.read-ref",
+      "issues.read",
+      "issue.comments.read",
+      "ui.detailTab.register"
     ]);
     expect(Object.keys(manifest.instanceConfigSchema?.properties ?? {})).toEqual(["linearApiKey"]);
   });
@@ -86,7 +89,7 @@ describe("manifest", () => {
     expect(manifest.objectReferences?.map((entry) => entry.providerKey)).toEqual(["linear"]);
   });
 
-  it("stays read-only", () => {
+  it("declares no capability that writes to Paperclip", () => {
     expect(manifest.capabilities).not.toContain("external.objects.write");
     expect(manifest.capabilities.filter((capability) => /\.(write|create|update)$/.test(capability))).toEqual([]);
   });
@@ -496,7 +499,7 @@ describe("onResolveExternalObject", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  // The plugin must not be able to write, even with a Read and Write key.
+  // Reading a status must not be able to write, even with a Read and Write key.
   it("only ever sends the one fixed GraphQL query document to Linear", async () => {
     expect(LINEAR_ISSUE_QUERY).toMatch(/^query\s/);
     expect(LINEAR_ISSUE_QUERY).not.toMatch(/\b(mutation|subscription)\b/i);

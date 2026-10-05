@@ -4,7 +4,7 @@ Paperclip plugins: live status for external links, one package per provider.
 
 | Package | npm | What it does |
 | --- | --- | --- |
-| [`packages/linear`](packages/linear) | `@llwt/paperclip-plugin-linear` | Read-only live status for Linear issue links |
+| [`packages/linear`](packages/linear) | `@llwt/paperclip-plugin-linear` | Live status for Linear issue links, and a manual control to change a linked issue's state |
 
 ## Development
 

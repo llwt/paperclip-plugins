@@ -4,6 +4,7 @@ import {
   type PluginContext,
   type PluginExternalObjectDetection
 } from "@paperclipai/plugin-sdk";
+import { registerControl } from "./control.js";
 import { linearProvider } from "./providers/linear.js";
 import type { Provider } from "./providers/types.js";
 
@@ -18,6 +19,7 @@ function isSecretRef(value: unknown): value is { type: "secret_ref"; secretId: s
 const plugin = definePlugin({
   async setup(context) {
     ctx = context;
+    registerControl(context);
   },
 
   async onHealth() {

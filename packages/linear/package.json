@@ -2,7 +2,7 @@
   "name": "@llwt/paperclip-plugin-linear",
   "version": "0.1.0",
   "type": "module",
-  "description": "Read-only live status for Linear issue links on Paperclip issues",
+  "description": "Live status for Linear issue links on Paperclip issues, with a manual control to change a linked issue's state",
   "scripts": {
     "build": "node ./esbuild.config.mjs",
     "dev": "node ./esbuild.config.mjs --watch",
@@ -16,7 +16,8 @@
   ],
   "paperclipPlugin": {
     "manifest": "./dist/manifest.js",
-    "worker": "./dist/worker.js"
+    "worker": "./dist/worker.js",
+    "ui": "./dist/ui/"
   },
   "keywords": [
     "paperclip",
@@ -39,8 +40,14 @@
   },
   "devDependencies": {
     "@paperclipai/plugin-sdk": "2026.916.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.3.0",
     "ajv": "^8.17.1",
     "esbuild": "^0.25.8",
+    "jsdom": "^26.1.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typescript": "5.9.3",
     "vitest": "4.1.9"
   }
