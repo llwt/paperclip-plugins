@@ -33,3 +33,9 @@ npm trusted publishing (OIDC), so there is no npm token in this repo. Each
 package on npmjs.com must list this repository and `release.yml` as its
 trusted publisher. npm only allows that on a package that already exists, so
 the first release of a new package is a one-off manual `npm publish`.
+
+When adding the trusted publisher, also allow `npm publish` under **Allowed
+actions**. A new configuration allows only `npm stage publish` by default,
+while `release.yml` publishes directly with `npm publish`, so without it the
+tag release fails. See the
+[npm trusted publishers docs](https://docs.npmjs.com/trusted-publishers/).
