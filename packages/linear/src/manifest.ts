@@ -3,7 +3,7 @@ import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 const manifest: PaperclipPluginManifestV1 = {
   id: "llwt.paperclip-linear",
   apiVersion: 1,
-  version: "0.1.0",
+  version: "0.2.0",
   displayName: "Linear",
   description: "Live status for Linear issue links on Paperclip issues, with a manual control to change a linked issue's state",
   author: "llwt",
