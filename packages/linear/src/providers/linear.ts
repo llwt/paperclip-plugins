@@ -177,13 +177,14 @@ export const linearProvider: Provider = {
     const issue = isRecord(body.data) ? parseIssue(body.data.issue) : null;
     if (!issue) return malformedResponse("linear");
 
-    // The host shows `displayTitle` as the chip text and falls back to the link
-    // URL or the last stored title when it is missing, so the identifier is
-    // always sent explicitly. The issue title is deliberately left out.
+    // The host shows `displayKey` in the first column and `displayTitle` plus
+    // the status label in the second. It falls back to the link URL or the last
+    // stored title when `displayTitle` is missing and renders an empty one as
+    // is, so an issue without a title sends the identifier instead.
     const base = {
       displayKey: issue.identifier,
       iconKey: "linear",
-      displayTitle: issue.identifier,
+      displayTitle: issue.title?.trim() || issue.identifier,
       ttlSeconds: TTL_SECONDS
     };
     // An archived issue keeps its last workflow state, which would otherwise

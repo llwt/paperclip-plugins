@@ -17,8 +17,11 @@ Only `https` links are detected.
 
 ### Chip display
 
-The chip reads the Linear identifier and the workflow state name, for example
-`ENG-123 - Todo`. The issue title is not shown, on the chip or on hover.
+The Linear identifier is the row key, and the chip reads the issue title and
+the workflow state name, for example `Example issue - Todo`. Where there is no
+title (a link that has not been read yet, an issue that was not found, or an
+empty title) the chip reads the identifier instead, for example
+`ENG-123 - Not found`. It never falls back to the link URL.
 
 The status icon is picked from the host's fixed icon set by state type:
 
