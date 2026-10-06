@@ -1,6 +1,6 @@
 {
   "name": "@llwt/paperclip-plugin-linear",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Live status for Linear issue links on Paperclip issues, with a manual control to change a linked issue's state",
   "scripts": {
