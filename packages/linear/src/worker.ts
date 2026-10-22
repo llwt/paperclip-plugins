@@ -7,19 +7,28 @@ import {
 import { registerControl } from "./control.js";
 import { linearProvider } from "./providers/linear.js";
 import type { Provider } from "./providers/types.js";
+import { TokenCache } from "./token-cache.js";
 
 const providers: Provider[] = [linearProvider];
 
 let ctx: PluginContext | null = null;
+let tokenCache: TokenCache | null = null;
 
 function isSecretRef(value: unknown): value is { type: "secret_ref"; secretId: string } {
   return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "secret_ref";
 }
 
 const plugin = definePlugin({
+  multiCompanyConfig: true,
+
   async setup(context) {
     ctx = context;
-    registerControl(context);
+    tokenCache = new TokenCache(context);
+    registerControl(context, tokenCache);
+  },
+
+  async onConfigChanged(_config, context) {
+    tokenCache?.clear(context?.companyId);
   },
 
   async onHealth() {
@@ -54,7 +63,7 @@ const plugin = definePlugin({
 
   async onResolveExternalObject({ companyId, providerKey, objectType, externalId }) {
     const provider = providers.find((entry) => entry.providerKey === providerKey);
-    if (!provider || !ctx) {
+    if (!provider || !ctx || !tokenCache) {
       return { ok: false, liveness: "unreachable", errorCode: "unsupported_provider" };
     }
     const host = ctx;
@@ -82,15 +91,13 @@ const plugin = definePlugin({
     }
 
     try {
-      // Resolved per call and never cached or logged.
-      const token = await host.secrets.resolve(secretRef, {
-        companyId,
-        configPath: provider.configKey
-      });
+      // Shared in-memory cache: five minutes per company and secret ref, never
+      // logged. Config changes and HTTP 401/403 evict the cached credential.
+      const { token, fetch } = await tokenCache.resolve(companyId, secretRef, provider.configKey);
       return await provider.resolve({
         externalId,
         token,
-        fetch: (url, init) => host.http.fetch(url, init)
+        fetch
       });
     } catch {
       // The thrown error is deliberately dropped: transport and secret errors

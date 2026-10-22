@@ -7,6 +7,7 @@ import {
   linearProvider
 } from "./providers/linear.js";
 import { isRecord, readJson, type ProviderFetch } from "./providers/types.js";
+import { TokenCache, type ResolvedToken } from "./token-cache.js";
 
 // The manual status control. It lists the Linear issues linked on a task and
 // changes the state of one of them when a board user picks another state.
@@ -194,16 +195,16 @@ async function readWorkflow(fetch: ProviderFetch, token: string, identifier: str
   };
 }
 
-// Resolved per call and never cached or logged. Returns null when no secret
-// is bound.
-async function resolveToken(host: PluginContext, companyId: string): Promise<string | null> {
+// Shares the worker's five-minute in-memory cache by company and secret ref.
+// Config changes and HTTP 401/403 evict it. Never logged; null if unbound.
+async function resolveToken(host: PluginContext, cache: TokenCache, companyId: string): Promise<ResolvedToken | null> {
   const config = await host.config.get(companyId);
   const secretRef = config[linearProvider.configKey];
   if (!isSecretRef(secretRef)) return null;
-  return host.secrets.resolve(secretRef, { companyId, configPath: linearProvider.configKey });
+  return cache.resolve(companyId, secretRef, linearProvider.configKey);
 }
 
-async function listLinkedIssues(host: PluginContext, params: Record<string, unknown>): Promise<LinkedIssuesResult> {
+async function listLinkedIssues(host: PluginContext, cache: TokenCache, params: Record<string, unknown>): Promise<LinkedIssuesResult> {
   const { issueId, companyId } = params;
   const empty: LinkedIssuesResult = { issues: [], total: 0, nextOffset: null };
   if (typeof issueId !== "string" || typeof companyId !== "string") return empty;
@@ -223,19 +224,18 @@ async function listLinkedIssues(host: PluginContext, params: Record<string, unkn
     message: MESSAGES[code]
   });
 
-  let token: string | null;
+  let credential: ResolvedToken | null;
   try {
-    token = await resolveToken(host, companyId);
+    credential = await resolveToken(host, cache, companyId);
   } catch {
     host.logger.warn("Linear status control read failed");
     return page(identifiers.map((identifier) => unavailable(identifier, "error")));
   }
-  if (token === null) {
+  if (credential === null) {
     return page(identifiers.map((identifier) => unavailable(identifier, "auth_required")));
   }
 
-  const secret = token;
-  const fetch: ProviderFetch = (url, init) => host.http.fetch(url, init);
+  const { token: secret, fetch } = credential;
   const issues = await Promise.all(
     identifiers.map(async (identifier): Promise<LinkedIssue> => {
       try {
@@ -254,6 +254,7 @@ async function listLinkedIssues(host: PluginContext, params: Record<string, unkn
 
 async function setIssueState(
   host: PluginContext,
+  cache: TokenCache,
   params: Record<string, unknown>,
   actor: { type: string; companyId: string | null }
 ): Promise<SetStateResult> {
@@ -280,9 +281,9 @@ async function setIssueState(
     const linked = await linkedIdentifiers(host, issueId, companyId);
     if (!linked || !linked.includes(identifier)) return failure("not_linked");
 
-    const token = await resolveToken(host, companyId);
-    if (token === null) return failure("auth_required");
-    const fetch: ProviderFetch = (url, init) => host.http.fetch(url, init);
+    const credential = await resolveToken(host, cache, companyId);
+    if (credential === null) return failure("auth_required");
+    const { token, fetch } = credential;
 
     const workflow = await readWorkflow(fetch, token, identifier);
     if (workflow.kind === "failure") return failure(workflow.code);
@@ -307,7 +308,7 @@ async function setIssueState(
   }
 }
 
-export function registerControl(host: PluginContext): void {
-  host.data.register(LINKED_ISSUES_DATA_KEY, (params) => listLinkedIssues(host, params));
-  host.actions.register(SET_STATE_ACTION_KEY, (params, context) => setIssueState(host, params, context.actor));
+export function registerControl(host: PluginContext, cache: TokenCache): void {
+  host.data.register(LINKED_ISSUES_DATA_KEY, (params) => listLinkedIssues(host, cache, params));
+  host.actions.register(SET_STATE_ACTION_KEY, (params, context) => setIssueState(host, cache, params, context.actor));
 }
