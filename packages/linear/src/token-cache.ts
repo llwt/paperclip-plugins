@@ -6,6 +6,7 @@ export const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 export interface ResolvedToken {
   token: string;
   fetch: ProviderFetch;
+  invalidate(): void;
 }
 
 interface CacheEntry {
@@ -49,15 +50,17 @@ export class TokenCache {
         try {
           const token = await this.host.secrets.resolve(secretRef, { companyId, configPath });
           entry.expiresAt = Date.now() + TOKEN_CACHE_TTL_MS;
+          const invalidate = () => {
+            // An old request must not evict a newer credential after expiry
+            // or a config change. The next call resolves again, no retries.
+            if (this.entries.get(key) === entry) this.entries.delete(key);
+          };
           return {
             token,
+            invalidate,
             fetch: async (url, init) => {
               const response = await this.host.http.fetch(url, init);
-              if (response.status === 401 || response.status === 403) {
-                // An old request must not evict a newer credential after expiry
-                // or a config change. The next call resolves again, no retries.
-                if (this.entries.get(key) === entry) this.entries.delete(key);
-              }
+              if (response.status === 401 || response.status === 403) invalidate();
               return response;
             }
           };

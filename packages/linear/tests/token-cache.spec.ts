@@ -27,6 +27,10 @@ function issueResponse() {
   }));
 }
 
+function graphQLErrorResponse(status: number, code: string) {
+  return new Response(JSON.stringify({ errors: [{ extensions: { code } }] }), { status });
+}
+
 function resolve(companyId = COMPANY_ID) {
   return plugin.definition.onResolveExternalObject!({
     companyId,
@@ -131,6 +135,44 @@ describe("worker token cache", () => {
     expect(secret).toHaveBeenCalledTimes(2);
   });
 
+  describe.each([200, 400])("GraphQL errors on HTTP %s", (status) => {
+    it.each(["AUTHENTICATION_ERROR", "FORBIDDEN"])("evicts on chip %s so the next control call resolves again", async (code) => {
+      fetchMock.mockResolvedValueOnce(graphQLErrorResponse(status, code));
+      expect(await resolve()).toMatchObject({ ok: false, liveness: "auth_required" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      secret.mockResolvedValue("rotated-test-token");
+      await list();
+      expect(secret).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1][1]?.headers).toMatchObject({ authorization: "rotated-test-token" });
+    });
+
+    it("evicts on control authentication errors so the next chip call resolves again", async () => {
+      fetchMock.mockResolvedValueOnce(graphQLErrorResponse(status, "AUTHENTICATION_ERROR"));
+      expect(await list()).toMatchObject({ issues: [{ code: "auth_rejected" }] });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await resolve();
+      expect(secret).toHaveBeenCalledTimes(2);
+    });
+
+    it("evicts on mutation authentication errors without retrying the mutation", async () => {
+      fetchMock.mockResolvedValueOnce(issueResponse())
+        .mockResolvedValueOnce(graphQLErrorResponse(status, "AUTHENTICATION_ERROR"));
+      expect(await setState()).toMatchObject({ ok: false, code: "auth_rejected" });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      await resolve();
+      expect(secret).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the token for non-auth GraphQL errors across chip and control calls", async () => {
+      fetchMock.mockImplementation(async () => graphQLErrorResponse(status, "INTERNAL_SERVER_ERROR"));
+      expect(await resolve()).toMatchObject({ ok: false, liveness: "unreachable" });
+      expect(await list()).toMatchObject({ issues: [{ code: "error" }] });
+      fetchMock.mockImplementation(async () => issueResponse());
+      expect(await resolve()).toMatchObject({ ok: true });
+      expect(secret).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("shares an in-flight resolve between parallel chip and control misses", async () => {
     let finish!: (token: string) => void;
     secret.mockImplementation(() => new Promise<string>((resolve) => { finish = resolve; }));
@@ -178,6 +220,19 @@ describe("worker token cache", () => {
     await resolve();
     finish(new Response(null, { status: 401 }));
     await oldRequest;
+    await list();
+    expect(secret).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let a late GraphQL auth error evict a fresh entry", async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+    const oldRequest = resolve();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    vi.advanceTimersByTime(TOKEN_CACHE_TTL_MS);
+    await resolve();
+    finish(graphQLErrorResponse(400, "AUTHENTICATION_ERROR"));
+    expect(await oldRequest).toMatchObject({ ok: false, liveness: "auth_required" });
     await list();
     expect(secret).toHaveBeenCalledTimes(2);
   });

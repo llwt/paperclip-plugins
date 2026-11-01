@@ -6,7 +6,7 @@ import {
   LINEAR_API_URL,
   linearProvider
 } from "./providers/linear.js";
-import { isRecord, readJson, type ProviderFetch } from "./providers/types.js";
+import { isRecord, readJson } from "./providers/types.js";
 import { TokenCache, type ResolvedToken } from "./token-cache.js";
 
 // The manual status control. It lists the Linear issues linked on a task and
@@ -133,25 +133,27 @@ type GraphQLOutcome = { kind: "data"; data: Record<string, unknown> } | { kind: 
 
 // Sends one GraphQL document. Never retries.
 async function sendGraphQL(
-  fetch: ProviderFetch,
-  token: string,
+  credential: ResolvedToken,
   query: string,
   variables: Record<string, string>
 ): Promise<GraphQLOutcome> {
+  const { fetch, token, invalidate } = credential;
   const response = await fetch(LINEAR_API_URL, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: token },
     body: JSON.stringify({ query, variables })
   });
-  if (response.status === 401 || response.status === 403) return { kind: "failure", code: "auth_rejected" };
+  const body = await readJson(response);
+  const kinds = isRecord(body) && Array.isArray(body.errors) ? body.errors.map(classifyError) : [];
+  if (response.status === 401 || response.status === 403 || kinds.includes("auth")) {
+    invalidate();
+    return { kind: "failure", code: "auth_rejected" };
+  }
   if (!response.ok) return { kind: "failure", code: "error" };
 
-  const body = await readJson(response);
   if (!isRecord(body)) return { kind: "failure", code: "error" };
   if (body.errors !== undefined) {
     if (!Array.isArray(body.errors) || body.errors.length === 0) return { kind: "failure", code: "error" };
-    const kinds = body.errors.map(classifyError);
-    if (kinds.includes("auth")) return { kind: "failure", code: "auth_rejected" };
     if (kinds.every((kind) => kind === "not_found") && hasNoIssueData(body.data)) {
       return { kind: "failure", code: "not_found" };
     }
@@ -165,8 +167,8 @@ type Workflow =
   | { kind: "ok"; id: string; identifier: string; state: WorkflowState; states: WorkflowState[] }
   | { kind: "failure"; code: FailureCode };
 
-async function readWorkflow(fetch: ProviderFetch, token: string, identifier: string): Promise<Workflow> {
-  const outcome = await sendGraphQL(fetch, token, LINEAR_WORKFLOW_QUERY, { id: identifier });
+async function readWorkflow(credential: ResolvedToken, identifier: string): Promise<Workflow> {
+  const outcome = await sendGraphQL(credential, LINEAR_WORKFLOW_QUERY, { id: identifier });
   if (outcome.kind === "failure") return outcome;
 
   const issue = outcome.data.issue;
@@ -196,7 +198,7 @@ async function readWorkflow(fetch: ProviderFetch, token: string, identifier: str
 }
 
 // Shares the worker's five-minute in-memory cache by company and secret ref.
-// Config changes and HTTP 401/403 evict it. Never logged; null if unbound.
+// Config changes, HTTP 401/403 and GraphQL auth failures evict it. Never logged; null if unbound.
 async function resolveToken(host: PluginContext, cache: TokenCache, companyId: string): Promise<ResolvedToken | null> {
   const config = await host.config.get(companyId);
   const secretRef = config[linearProvider.configKey];
@@ -235,11 +237,10 @@ async function listLinkedIssues(host: PluginContext, cache: TokenCache, params: 
     return page(identifiers.map((identifier) => unavailable(identifier, "auth_required")));
   }
 
-  const { token: secret, fetch } = credential;
   const issues = await Promise.all(
     identifiers.map(async (identifier): Promise<LinkedIssue> => {
       try {
-        const workflow = await readWorkflow(fetch, secret, identifier);
+        const workflow = await readWorkflow(credential, identifier);
         if (workflow.kind === "failure") return unavailable(identifier, workflow.code);
         return { identifier, status: "ok", state: workflow.state, states: workflow.states };
       } catch {
@@ -283,15 +284,14 @@ async function setIssueState(
 
     const credential = await resolveToken(host, cache, companyId);
     if (credential === null) return failure("auth_required");
-    const { token, fetch } = credential;
 
-    const workflow = await readWorkflow(fetch, token, identifier);
+    const workflow = await readWorkflow(credential, identifier);
     if (workflow.kind === "failure") return failure(workflow.code);
     const target = workflow.states.find((state) => state.id === stateId);
     if (!target) return failure("invalid_state");
     if (workflow.state.id === target.id) return { ok: true, identifier, state: target, changed: false };
 
-    const outcome = await sendGraphQL(fetch, token, LINEAR_SET_STATE_MUTATION, { id: workflow.id, stateId });
+    const outcome = await sendGraphQL(credential, LINEAR_SET_STATE_MUTATION, { id: workflow.id, stateId });
     if (outcome.kind === "failure") return failure(outcome.code);
     const update = outcome.data.issueUpdate;
     const applied = isRecord(update) && isRecord(update.issue) ? parseState(update.issue.state) : null;

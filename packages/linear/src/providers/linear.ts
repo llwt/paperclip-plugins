@@ -128,16 +128,18 @@ export const linearProvider: Provider = {
       headers: { "content-type": "application/json", authorization: token },
       body: JSON.stringify({ query: LINEAR_ISSUE_QUERY, variables: { id: externalId } })
     });
+    // Auth errors can arrive inside GraphQL errors on any HTTP status.
+    const body = await readJson(response);
+    const kinds = isRecord(body) && Array.isArray(body.errors) ? body.errors.map(classifyError) : [];
+    if (kinds.includes("auth")) return authRequired("linear");
+
     const failure = failureForStatus("linear", response);
     if (failure) return failure;
 
-    const body = await readJson(response);
     if (!isRecord(body)) return malformedResponse("linear");
 
     if (body.errors !== undefined) {
       if (!Array.isArray(body.errors) || body.errors.length === 0) return malformedResponse("linear");
-      const kinds = body.errors.map(classifyError);
-      if (kinds.includes("auth")) return authRequired("linear");
       if (kinds.includes("rate_limited")) {
         return {
           ok: false,

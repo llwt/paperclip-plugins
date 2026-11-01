@@ -92,13 +92,15 @@ const plugin = definePlugin({
 
     try {
       // Shared in-memory cache: five minutes per company and secret ref, never
-      // logged. Config changes and HTTP 401/403 evict the cached credential.
-      const { token, fetch } = await tokenCache.resolve(companyId, secretRef, provider.configKey);
-      return await provider.resolve({
+      // logged. Config changes, HTTP 401/403 and GraphQL auth failures evict it.
+      const { token, fetch, invalidate } = await tokenCache.resolve(companyId, secretRef, provider.configKey);
+      const result = await provider.resolve({
         externalId,
         token,
         fetch
       });
+      if (!result.ok && result.liveness === "auth_required") invalidate();
+      return result;
     } catch {
       // The thrown error is deliberately dropped: transport and secret errors
       // can carry the credential, so only fixed text is logged or returned.
